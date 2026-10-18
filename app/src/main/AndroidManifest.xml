@@ -9,7 +9,7 @@
         android:theme="@style/Theme.LUMA"
         android:usesCleartextTraffic="false">
         <activity
-            android:name="com.luma.music.MainActivity"
+            android:name="com.glasswave.music.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
