@@ -9,6 +9,7 @@ A monochrome, glass-inspired Android local music player built with Kotlin and Je
 - Favourites (kept in memory while the app is running in this starter version)
 - Mini-player with play/pause and next-track controls
 - No in-app advertisements or analytics SDKs
+- Spotify playlist-link page: save a Spotify playlist URL during the current app session and open it in Spotify or a browser
 
 ## Build
 1. Install Android Studio on a computer.
@@ -19,6 +20,8 @@ A monochrome, glass-inspired Android local music player built with Kotlin and Je
 This project uses Android Gradle Plugin 8.7.3, Kotlin 2.0.21, Java 17, and Compose BOM 2024.12.01.
 
 ## Notes
-- Playback is for audio files available on the device. This does not include Spotify's licensed catalogue, account features, or paid features.
+- Local playback is for audio files available on the device. Spotify playlist links open in the Spotify app or browser; LUMA does not stream Spotify's licensed catalogue itself.
+- LUMA has no in-app ads, but it cannot remove ads from Spotify Free or provide Spotify Premium features.
+- Spotify playlist links are currently held in memory for the current app session and are not persisted across app restarts. A full Spotify account/API integration is not yet implemented.
 - Favourites are not yet persisted across app restarts in this starter build.
 - Gradle wrapper scripts are not included; Android Studio can import and sync the project.
