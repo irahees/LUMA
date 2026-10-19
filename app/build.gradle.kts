@@ -5,6 +5,10 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val spotifyClientId = providers.gradleProperty("spotifyClientId")
+    .orElse(providers.environmentVariable("SPOTIFY_CLIENT_ID"))
+    .getOrElse("")
+
 android {
     namespace = "com.glasswave.music"
     compileSdk = 35
@@ -15,9 +19,11 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "SPOTIFY_CLIENT_ID", "\"$spotifyClientId\"")
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 
