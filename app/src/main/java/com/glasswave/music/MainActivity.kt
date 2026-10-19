@@ -25,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -212,7 +213,7 @@ private fun LumaApp(
     var favourites by remember {
         mutableStateOf(preferences.getStringSet("favourites", emptySet()).orEmpty().mapNotNull { it.toLongOrNull() }.toSet())
     }
-    var spotifyClientId by remember { mutableStateOf(preferences.getString("spotify_client_id", "").orEmpty()) }
+    val spotifyClientId = BuildConfig.SPOTIFY_CLIENT_ID.trim()
     var spotifySession by remember { mutableStateOf<SpotifySession?>(null) }
     var spotifyLoading by remember { mutableStateOf(false) }
     var spotifyMessage by remember { mutableStateOf<String?>(null) }
@@ -231,9 +232,6 @@ private fun LumaApp(
     LaunchedEffect(favourites) {
         preferences.edit().putStringSet("favourites", favourites.map { it.toString() }.toSet()).apply()
     }
-    LaunchedEffect(spotifyClientId) {
-        preferences.edit().putString("spotify_client_id", spotifyClientId).apply()
-    }
     val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasPermission = granted
@@ -249,12 +247,14 @@ private fun LumaApp(
         source.filter { it.title.contains(search, true) || it.artist.contains(search, true) || it.album.contains(search, true) }
     }
 
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFFFCFCFE), Color(0xFFEDEFFA), Color(0xFFF8F9FC))))) {
+    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFFFAFBFF), Color(0xFFE9ECF8), Color(0xFFF7F8FC))))) {
+        Box(Modifier.align(Alignment.TopEnd).offset(x = 64.dp, y = 92.dp).size(245.dp).blur(72.dp).background(Color(0x627D8CF5), CircleShape))
+        Box(Modifier.align(Alignment.BottomStart).offset(x = (-75).dp, y = (-55).dp).size(250.dp).blur(76.dp).background(Color(0x50B7A8F7), CircleShape))
         Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 19.dp)) {
             Row(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("L U M A", fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, color = LumaInk)
-                    Text("YOUR SOUND, YOUR SPACE", fontSize = 9.sp, letterSpacing = 2.sp, color = LumaMuted)
+                    Text("YOUR MUSIC, IN ITS ELEMENT", fontSize = 9.sp, letterSpacing = 1.7.sp, color = LumaMuted)
                 }
                 GlassCircle("✧") { tab = "Favourites" }
             }
@@ -326,8 +326,7 @@ private fun LumaApp(
                 }
             } else if (tab == "Spotify") {
                 SpotifyAccountPanel(
-                    clientId = spotifyClientId,
-                    onClientIdChange = { spotifyClientId = it; spotifyMessage = null },
+                    oauthConfigured = spotifyClientId.isNotBlank(),
                     connected = spotifySession != null,
                     loading = spotifyLoading,
                     message = spotifyMessage,
@@ -339,6 +338,15 @@ private fun LumaApp(
                     onLibraryTabChange = { spotifyLibraryTab = it; spotifySelectedPlaylist = null; spotifyTracks = emptyList() },
                     onConnect = {
                         if (spotifyLoading) return@SpotifyAccountPanel
+                        if (spotifyClientId.isBlank()) {
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://accounts.spotify.com/login")))
+                                spotifyMessage = "Spotify login opened. Library sync becomes available when the LUMA app owner configures the official OAuth Client ID once."
+                            } catch (_: Exception) {
+                                spotifyMessage = "Could not open Spotify login. Check that a browser is installed."
+                            }
+                            return@SpotifyAccountPanel
+                        }
                         spotifyLoading = true
                         spotifyMessage = "Opening secure Spotify sign-in…"
                         coroutineScope.launch {
@@ -577,8 +585,7 @@ private fun FreeMusicPanel(
 
 @Composable
 private fun SpotifyAccountPanel(
-    clientId: String,
-    onClientIdChange: (String) -> Unit,
+    oauthConfigured: Boolean,
     connected: Boolean,
     loading: Boolean,
     message: String?,
@@ -610,25 +617,57 @@ private fun SpotifyAccountPanel(
             }
         }
         if (!connected) {
-            Text(
-                "Enter your Spotify Developer Client ID for this app. Sign-in opens Spotify securely; your Spotify password is never entered into LUMA. Playlists and Liked Songs sync here, while Spotify tracks open in Spotify for playback.",
-                fontSize = 11.sp, color = LumaMuted, lineHeight = 16.sp
-            )
-            OutlinedTextField(
-                value = clientId,
-                onValueChange = onClientIdChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Spotify Client ID") },
-                placeholder = { Text("Paste Client ID") },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp)
-            )
-            Text("Add this Redirect URI in your Spotify app settings:", fontSize = 10.sp, color = LumaMuted)
-            Text(SpotifyApi.REDIRECT_URI, fontSize = 10.sp, color = LumaAccent, maxLines = 2)
-            Button(onClick = onConnect, enabled = !loading && clientId.isNotBlank(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp)) {
-                Text(if (loading) "Connecting…" else "Sign in with Spotify")
+            Box(
+                Modifier.fillMaxWidth().height(122.dp)
+                    .background(
+                        Brush.linearGradient(listOf(Color(0xFF202125), Color(0xFF34383D), Color(0xFF101114))),
+                        RoundedCornerShape(24.dp)
+                    )
+                    .border(1.dp, Color.White.copy(alpha = 0.70f), RoundedCornerShape(24.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    Modifier.align(Alignment.CenterStart).offset(x = 26.dp).size(116.dp)
+                        .blur(25.dp).background(Color(0x667BDFB4), CircleShape)
+                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        Modifier.size(47.dp).background(
+                            Brush.linearGradient(listOf(Color(0xFFB7FFD9), Color(0xFF55D69A))),
+                            CircleShape
+                        ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("♫", fontSize = 29.sp, fontWeight = FontWeight.Bold, color = Color(0xFF10271C))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text("YOUR SPOTIFY, REIMAGINED", fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.6.sp, color = Color.White)
+                }
+                Text("✧", modifier = Modifier.align(Alignment.TopEnd).padding(16.dp), color = Color.White.copy(alpha = 0.72f), fontSize = 24.sp)
             }
-            Text("Spotify controls API access and may limit which accounts can connect to a development app.", fontSize = 10.sp, color = LumaMuted, lineHeight = 15.sp)
+            Text(
+                "Continue on Spotify's official sign-in page. Your password stays with Spotify.",
+                fontSize = 12.sp, color = LumaMuted, lineHeight = 17.sp
+            )
+            Button(
+                onClick = onConnect,
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(19.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF202125), contentColor = Color.White)
+            ) {
+                Text(if (loading) "Opening Spotify…" else "Continue with Spotify", fontWeight = FontWeight.SemiBold)
+            }
+            if (!oauthConfigured) {
+                Text(
+                    "This opens Spotify login, but syncing playlists requires the LUMA app owner to configure official OAuth once. You won't need to enter a Client ID.",
+                    fontSize = 10.sp, color = LumaMuted, lineHeight = 15.sp
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.size(7.dp).background(Color(0xFF65B994), CircleShape))
+                Text("No password is collected by LUMA", fontSize = 10.sp, color = LumaMuted)
+            }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("Playlists", "Liked Songs").forEach { option ->
