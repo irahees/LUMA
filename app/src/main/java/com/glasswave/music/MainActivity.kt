@@ -206,7 +206,7 @@ private fun LumaApp(
     var tracks by remember { mutableStateOf(emptyList<LumaTrack>()) }
     var hasPermission by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
-    var tab by remember { mutableStateOf("Home") }
+    var tab by remember { mutableStateOf("Spotify") }
     var currentTrack by remember { mutableStateOf<LumaTrack?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
     var favourites by remember {
@@ -273,7 +273,7 @@ private fun LumaApp(
                 }
                 Spacer(Modifier.height(8.dp))
             } else {
-                Text(when (tab) { "Search" -> "Find your sound"; "Favourites" -> "Your favourites"; "Now Playing" -> "Now playing"; "Spotify" -> "Spotify playlists"; "Free Music" -> "Free music"; else -> "Your library" }, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
+                Text(when (tab) { "Search" -> "Find your sound"; "Favourites" -> "Your favourites"; "Now Playing" -> "Now playing"; "Spotify" -> "Connect your music"; "Free Music" -> "Free music"; else -> "Your library" }, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
                 Spacer(Modifier.height(13.dp))
             }
 
