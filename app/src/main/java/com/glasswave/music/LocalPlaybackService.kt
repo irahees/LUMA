@@ -61,7 +61,16 @@ class LocalPlaybackService : Service() {
                                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
                                 .build()
                         )
-                        setDataSource(this@LocalPlaybackService, Uri.parse(uriText))
+                        val sourceUri = Uri.parse(uriText)
+                        if (sourceUri.scheme.equals("http", ignoreCase = true) ||
+                            sourceUri.scheme.equals("https", ignoreCase = true)
+                        ) {
+                            // Network streams must use MediaPlayer's URL overload.
+                            setDataSource(uriText)
+                        } else {
+                            // Local content/file URIs are resolved by Android's ContentResolver.
+                            setDataSource(this@LocalPlaybackService, sourceUri)
+                        }
                         setOnPreparedListener { it.start() }
                         setOnErrorListener { _, _, _ ->
                             stopForeground(STOP_FOREGROUND_REMOVE)
