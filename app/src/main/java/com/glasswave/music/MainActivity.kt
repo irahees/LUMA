@@ -219,6 +219,7 @@ private fun LumaApp(
     var freeMusicSearch by remember { mutableStateOf("") }
     var freeMusicTracks by remember { mutableStateOf(emptyList<LumaTrack>()) }
     var freeMusicLoading by remember { mutableStateOf(false) }
+    var freeMusicRequest by remember { mutableStateOf(0) }
     var freeMusicMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(favourites) {
@@ -300,15 +301,15 @@ private fun LumaApp(
                     loading = freeMusicLoading,
                     message = freeMusicMessage,
                     onSearch = {
-                        freeMusicLoading = true
+                        freeMusicRequest += 1
                         freeMusicMessage = null
-                        // Search runs off the UI thread and only returns items with CC BY/CC BY-SA metadata.
                     },
+                    favouriteIds = favourites,
                     onPlay = { track -> currentTrack = track; playTrack(track); isPlaying = true },
                     onFavourite = { track -> favourites = if (track.id in favourites) favourites - track.id else favourites + track.id }
                 )
-                LaunchedEffect(freeMusicSearch, tab) {
-                    if (tab == "Free Music" && freeMusicTracks.isEmpty() && !freeMusicLoading) {
+                LaunchedEffect(freeMusicRequest, tab) {
+                    if (tab == "Free Music") {
                         freeMusicLoading = true
                         try {
                             freeMusicTracks = searchFreeMusic(freeMusicSearch)
@@ -479,10 +480,11 @@ private fun FreeMusicPanel(
     loading: Boolean,
     message: String?,
     onSearch: () -> Unit,
+    favouriteIds: Set<Long>,
     onPlay: (LumaTrack) -> Unit,
     onFavourite: (LumaTrack) -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxWidth().fillMaxHeight(0.70f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
             "Free-to-play music with Creative Commons BY / BY-SA metadata from Internet Archive. Tracks are streamed from their public item pages.",
             fontSize = 11.sp, color = LumaMuted, lineHeight = 16.sp
@@ -508,7 +510,7 @@ private fun FreeMusicPanel(
         if (message != null) Text(message, fontSize = 12.sp, color = LumaMuted)
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
             items(tracks, key = { it.id }) { track ->
-                TrackGlassRow(track, false, onFavourite = { onFavourite(track) }, onClick = { onPlay(track) })
+                TrackGlassRow(track, track.id in favouriteIds, onFavourite = { onFavourite(track) }, onClick = { onPlay(track) })
             }
         }
     }
@@ -556,7 +558,7 @@ private fun SpotifyPlaylistPanel(
             Text(message, fontSize = 12.sp, color = if (message.startsWith("Playlist link saved")) LumaAccent else Color(0xFFB54747))
         }
         if (savedPlaylists.isNotEmpty()) {
-            Text("Saved in this session", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
+            Text("Saved playlists", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
             savedPlaylists.forEachIndexed { index, url ->
                 Row(
                     Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp)).padding(12.dp),
