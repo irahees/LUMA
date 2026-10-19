@@ -17,19 +17,19 @@ LUMA is an Android music app built with Kotlin and Jetpack Compose. It brings lo
 
 ## Spotify sign-in
 
-LUMA no longer asks each person to paste a Client ID. The app can be built with the maintainer's Spotify OAuth Client ID and the user signs in on Spotify's official authorization page. LUMA never asks for or stores a Spotify password.
+LUMA does not ask each user to paste a Client ID. Users sign in on Spotify's official authorization page. LUMA never asks for or stores a Spotify password.
 
 ### One-time setup for the app maintainer
 
-Spotify's official OAuth flow requires an app Client ID. Set the repository's **Actions secret** named `SPOTIFY_CLIENT_ID` to the Client ID belonging to the LUMA app. The Android build workflow injects it at build time; it is not entered by each user. A Client Secret must not be embedded in this Android APK.
+Spotify OAuth requires a Client ID from the LUMA app owner's Spotify Developer Dashboard. Add it to the repository's GitHub Actions configuration as either a secret named `SPOTIFY_CLIENT_ID` or a repository variable named `SPOTIFY_CLIENT_ID`. The workflow injects it at build time; it is not entered by each user. A Spotify Client Secret must never be embedded in this Android APK.
 
-If this secret is not configured, the sign-in button can still open Spotify's login page, but that web login by itself does not authorize LUMA to read playlists or Liked Songs. Configure the Client ID once to enable official OAuth library sync in the build.
+The build workflow now stops instead of uploading an APK that cannot connect to Spotify when neither the secret nor the variable is configured.
 
 In the Spotify Developer Dashboard, register this redirect URI exactly:
 
 `http://127.0.0.1:43825/callback`
 
-Spotify controls API eligibility and usage limits. As of the current Development Mode rules, the app owner must meet Spotify's Premium requirement and Development Mode apps are limited to a small number of authorized users. That makes Development Mode unsuitable for unlimited public distribution. End users should use accounts they are authorized to access, and LUMA does not remove Spotify Free advertisements or Premium restrictions.
+Spotify controls API eligibility and usage limits. Spotify Development Mode has account and authorized-user restrictions, so it may not support unlimited public distribution. End users should use accounts they are authorized to access, and LUMA does not remove Spotify Free advertisements or Premium restrictions.
 
 ### Spotify audio playback
 
