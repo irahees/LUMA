@@ -7,7 +7,9 @@ A monochrome, glass-inspired Android local music player built with Kotlin and Je
 - Scan and play audio files on your Android device
 - Search the local music library
 - Favourites (kept in memory while the app is running in this starter version)
-- Mini-player with play/pause and next-track controls
+- Mini-player with play/pause controls
+- Foreground playback service for continuing local music when the app is backgrounded
+- Favourites and saved Spotify playlist links persisted locally
 - No in-app advertisements or analytics SDKs
 - Spotify playlist-link page: save a Spotify playlist URL during the current app session and open it in Spotify or a browser
 
