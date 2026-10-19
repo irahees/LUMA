@@ -703,7 +703,7 @@ private fun SpotifyTrackList(
     if (tracks.isEmpty() && !loading) {
         Text("No tracks returned.", color = LumaMuted, fontSize = 12.sp)
     }
-    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 6.dp)) {
+    LazyColumn(Modifier.fillMaxWidth().fillMaxHeight(0.37f), verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 6.dp)) {
         items(tracks, key = { it.id }) { track ->
             Row(
                 Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.83f), RoundedCornerShape(15.dp))
