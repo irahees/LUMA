@@ -2,6 +2,7 @@ package com.glasswave.music
 
 import android.Manifest
 import android.content.ContentUris
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.net.Uri
@@ -151,6 +152,9 @@ private fun LumaApp(
     var currentTrack by remember { mutableStateOf<LumaTrack?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
     var favourites by remember { mutableStateOf(setOf<Long>()) }
+    var spotifyPlaylistUrl by remember { mutableStateOf("") }
+    var savedSpotifyPlaylists by remember { mutableStateOf(emptyList<String>()) }
+    var spotifyMessage by remember { mutableStateOf<String?>(null) }
 
     val context = androidx.compose.ui.platform.LocalContext.current
     val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -192,7 +196,7 @@ private fun LumaApp(
                 }
                 Spacer(Modifier.height(8.dp))
             } else {
-                Text(when (tab) { "Search" -> "Find your sound"; "Favourites" -> "Your favourites"; "Now Playing" -> "Now playing"; else -> "Your library" }, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
+                Text(when (tab) { "Search" -> "Find your sound"; "Favourites" -> "Your favourites"; "Now Playing" -> "Now playing"; "Spotify" -> "Spotify playlists"; else -> "Your library" }, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
                 Spacer(Modifier.height(13.dp))
             }
 
@@ -215,7 +219,38 @@ private fun LumaApp(
                 Spacer(Modifier.height(10.dp))
             }
 
-            if (tab == "Now Playing" && currentTrack != null) {
+            if (tab == "Spotify") {
+                SpotifyPlaylistPanel(
+                    playlistUrl = spotifyPlaylistUrl,
+                    onUrlChange = { spotifyPlaylistUrl = it; spotifyMessage = null },
+                    savedPlaylists = savedSpotifyPlaylists,
+                    message = spotifyMessage,
+                    onSave = {
+                        val raw = spotifyPlaylistUrl.trim()
+                        val normalized = if (raw.startsWith("spotify:playlist:")) {
+                            "https://open.spotify.com/playlist/" + raw.removePrefix("spotify:playlist:")
+                        } else raw
+                        val uri = runCatching { Uri.parse(normalized) }.getOrNull()
+                        if (uri != null && uri.scheme == "https" && uri.host == "open.spotify.com" && uri.path.orEmpty().startsWith("/playlist/")) {
+                            if (normalized !in savedSpotifyPlaylists) savedSpotifyPlaylists = savedSpotifyPlaylists + normalized
+                            spotifyPlaylistUrl = normalized
+                            spotifyMessage = "Playlist link saved in this session."
+                        } else {
+                            spotifyMessage = "Paste a valid https://open.spotify.com/playlist/... link."
+                        }
+                    },
+                    onOpen = { url ->
+                        try {
+                            val uri = Uri.parse(url)
+                            if (uri.scheme == "https" && uri.host == "open.spotify.com" && uri.path.orEmpty().startsWith("/playlist/")) {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                            } else spotifyMessage = "This doesn't look like a Spotify playlist link."
+                        } catch (_: Exception) {
+                            spotifyMessage = "Couldn't open the playlist. Check the link and try again."
+                        }
+                    }
+                )
+            } else if (tab == "Now Playing" && currentTrack != null) {
                 NowPlayingGlass(currentTrack!!, isPlaying) {
                     if (isPlaying) pauseTrack() else resumeTrack()
                     isPlaying = !isPlaying
@@ -325,13 +360,74 @@ private fun NowPlayingGlass(track: LumaTrack, playing: Boolean, onPlayPause: () 
 
 @Composable
 private fun BottomGlassBar(tab: String, onSelect: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth().shadow(13.dp, RoundedCornerShape(28.dp), ambientColor = Color(0x16000000)).background(Brush.verticalGradient(listOf(Color(0xFAFFFFFF), Color(0xDFFFFFFF))), RoundedCornerShape(28.dp)).padding(horizontal = 7.dp, vertical = 9.dp), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
-        listOf(Triple("Home", "⌂", "Home"), Triple("Search", "⌕", "Search"), Triple("Library", "♫", "Library"), Triple("Favourites", "♡", "Likes")).forEach { (name, icon, label) ->
+    Row(Modifier.fillMaxWidth().shadow(13.dp, RoundedCornerShape(28.dp), ambientColor = Color(0x16000000)).background(Brush.verticalGradient(listOf(Color(0xFAFFFFFF), Color(0xDFFFFFFF))), RoundedCornerShape(28.dp)).padding(horizontal = 4.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
+        listOf(Triple("Home", "⌂", "Home"), Triple("Search", "⌕", "Search"), Triple("Library", "♫", "Library"), Triple("Favourites", "♡", "Likes"), Triple("Spotify", "◉", "Spotify")).forEach { (name, icon, label) ->
             Column(Modifier.weight(1f).clickable { onSelect(name) }.padding(vertical = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(icon, fontSize = 21.sp, color = if (tab == name) LumaAccent else LumaMuted)
                 Text(label, fontSize = 9.sp, color = if (tab == name) LumaAccent else LumaMuted, fontWeight = if (tab == name) FontWeight.Bold else FontWeight.Normal)
             }
         }
+    }
+}
+
+@Composable
+private fun SpotifyPlaylistPanel(
+    playlistUrl: String,
+    onUrlChange: (String) -> Unit,
+    savedPlaylists: List<String>,
+    message: String?,
+    onSave: () -> Unit,
+    onOpen: (String) -> Unit
+) {
+    Column(
+        Modifier.fillMaxWidth().weight(1f, fill = false).background(
+            Brush.verticalGradient(listOf(Color(0xF9FFFFFF), Color(0xDDE7E8FF))),
+            RoundedCornerShape(28.dp)
+        ).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Bring your playlists", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
+        Text(
+            "Paste a Spotify playlist link. LUMA can save the link here and open it in Spotify. Playback and Spotify ads are handled by Spotify.",
+            fontSize = 12.sp, color = LumaMuted, lineHeight = 18.sp
+        )
+        OutlinedTextField(
+            value = playlistUrl,
+            onValueChange = onUrlChange,
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("https://open.spotify.com/playlist/…") },
+            singleLine = true,
+            shape = RoundedCornerShape(18.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                unfocusedContainerColor = Color.White.copy(alpha = 0.72f),
+                focusedContainerColor = Color.White.copy(alpha = 0.9f),
+                unfocusedBorderColor = Color.White,
+                focusedBorderColor = LumaAccent
+            )
+        )
+        Button(onClick = onSave, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+            Text("Save playlist link")
+        }
+        if (message != null) {
+            Text(message, fontSize = 12.sp, color = if (message.startsWith("Playlist link saved")) LumaAccent else Color(0xFFB54747))
+        }
+        if (savedPlaylists.isNotEmpty()) {
+            Text("Saved in this session", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
+            savedPlaylists.forEachIndexed { index, url ->
+                Row(
+                    Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp)).padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Spotify playlist ${index + 1}", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = LumaInk)
+                        Text(url, fontSize = 10.sp, color = LumaMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Text("OPEN ↗", fontSize = 10.sp, color = LumaAccent, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onOpen(url) }.padding(8.dp))
+                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text("LUMA itself has no in-app ads. It cannot remove ads from Spotify Free or unlock Spotify Premium.", fontSize = 11.sp, color = LumaMuted, lineHeight = 16.sp)
     }
 }
 
