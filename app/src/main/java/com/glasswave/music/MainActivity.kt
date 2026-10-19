@@ -766,12 +766,55 @@ private fun SpotifyTrackList(
 
 @Composable
 private fun GlassCircle(symbol: String, onClick: () -> Unit) {
-    Box(Modifier.size(46.dp).shadow(8.dp, CircleShape).background(Color(0xDFFFFFFF), CircleShape).clickable(onClick = onClick), contentAlignment = Alignment.Center) { Text(symbol, fontSize = 24.sp, color = LumaAccent) }
+    val shape = CircleShape
+    Box(
+        modifier = Modifier
+            .size(46.dp)
+            .shadow(12.dp, shape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xF7FFFFFF),
+                        Color(0xCFFFFFFF),
+                        Color(0xA9E8EBFF)
+                    )
+                ),
+                shape
+            )
+            .border(1.dp, Brush.linearGradient(listOf(Color.White, Color(0xA6FFFFFF), Color(0x66A5ACEE))), shape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(symbol, fontSize = 24.sp, color = LumaAccent)
+    }
 }
 
 @Composable
 private fun GlassCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier.shadow(10.dp, RoundedCornerShape(25.dp)).background(Brush.linearGradient(listOf(Color(0xF9FFFFFF), Color(0xDFFFFFFF))), RoundedCornerShape(25.dp)).padding(20.dp), content = content)
+    val shape = RoundedCornerShape(25.dp)
+    Column(
+        modifier = modifier
+            .shadow(16.dp, shape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xF7FFFFFF),
+                        Color(0xDFFFFFFF),
+                        Color(0xC9F0F1FF)
+                    )
+                ),
+                shape
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(Color.White, Color(0xBFFFFFFF), Color(0x668B94D8))
+                ),
+                shape = shape
+            )
+            .padding(20.dp),
+        content = content
+    )
 }
 
 private fun formatTime(ms: Long): String {
