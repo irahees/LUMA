@@ -1,29 +1,31 @@
 # LUMA Music Player
 
-A monochrome, glass-inspired Android local music player built with Kotlin and Jetpack Compose.
+A light, Liquid Glass-inspired Android local music player built with Kotlin and Jetpack Compose.
 
 ## Features
-- Dark neutral Liquid Glass-inspired interface
-- Scan and play audio files on your Android device
-- Search the local music library
-- Favourites (kept in memory while the app is running in this starter version)
-- Mini-player with play/pause controls
-- Foreground playback service for continuing local music when the app is backgrounded
-- Favourites and saved Spotify playlist links persisted locally
-- No in-app advertisements or analytics SDKs
-- Spotify playlist-link page: save a Spotify playlist URL during the current app session and open it in Spotify or a browser
+- Scan, search and play local audio files
+- Favourites saved locally across app restarts
+- Foreground playback service for local music while the app is backgrounded
+- No in-app ads or analytics SDKs
+- Spotify OAuth 2.0 Authorization Code with PKCE
+- View the current Spotify account's playlists and Liked Songs metadata
+- Open Spotify tracks and playlists in Spotify for playback; LUMA does not extract or stream Spotify audio
+- Search and play separate, publicly available Creative Commons BY/BY-SA audio from Internet Archive
+
+## Spotify setup
+1. Create a Spotify Developer app and copy its Client ID.
+2. In the app's redirect URI allowlist, add exactly:
+   `http://127.0.0.1:43825/callback`
+3. Open LUMA, choose Spotify, paste the Client ID, and tap **Connect Spotify**.
+4. Sign in through Spotify and approve playlist/library read access.
+
+Spotify's current Development Mode eligibility includes a Premium requirement for the developer account, a limit of one development Client ID per developer, and up to five authorized users. Access to the API is controlled by Spotify; LUMA cannot grant API access or Premium features. Track playback remains in Spotify and follows Spotify's own account and advertising rules.
 
 ## Build
-1. Install Android Studio on a computer.
-2. Open the `LUMA` folder in Android Studio.
-3. Allow Gradle to sync and install the Android SDK requested by the project.
-4. Run on an Android device or emulator.
-
-This project uses Android Gradle Plugin 8.7.3, Kotlin 2.0.21, Java 17, and Compose BOM 2024.12.01.
+The repository includes a GitHub Actions workflow that builds a debug APK and uploads it as the `LUMA-debug-apk` artifact when a commit is pushed to `main`. Artifacts are temporary and expire after 14 days.
+Android Studio can also import the project and build it locally. The app uses Android Gradle Plugin 8.7.3, Kotlin 2.0.21, Java 17, and Compose BOM 2024.12.01.
 
 ## Notes
-- Local playback is for audio files available on the device. Spotify playlist links open in the Spotify app or browser; LUMA does not stream Spotify's licensed catalogue itself.
-- LUMA has no in-app ads, but it cannot remove ads from Spotify Free or provide Spotify Premium features.
-- Spotify playlist links are currently held in memory for the current app session and are not persisted across app restarts. A full Spotify account/API integration is not yet implemented.
-- Favourites are not yet persisted across app restarts in this starter build.
-- Gradle wrapper scripts are not included; Android Studio can import and sync the project.
+- Spotify access tokens are kept in app memory; reconnect after restarting LUMA.
+- The Spotify Client ID is a public app identifier. Never put a Spotify Client Secret in the Android app.
+- LUMA has no in-app advertisements, but it cannot remove ads from Spotify Free or provide Spotify Premium playback.
