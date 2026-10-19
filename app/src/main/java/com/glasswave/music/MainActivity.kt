@@ -51,8 +51,6 @@ data class LumaTrack(
 )
 
 class MainActivity : ComponentActivity() {
-    private var mediaPlayer: MediaPlayer? = null
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(244, 245, 248)
@@ -109,33 +107,23 @@ class MainActivity : ComponentActivity() {
         return result
     }
 
-    private fun playTrack(track: LumaTrack) {
-        try {
-            mediaPlayer?.release()
-            mediaPlayer = MediaPlayer().apply {
-                setDataSource(this@MainActivity, track.uri)
-                setOnPreparedListener { it.start() }
-                prepareAsync()
-            }
-        } catch (_: Exception) {
-            mediaPlayer?.release()
-            mediaPlayer = null
+    private fun sendPlaybackAction(action: String, track: LumaTrack? = null) {
+        val intent = Intent(this, LocalPlaybackService::class.java).setAction(action)
+        if (track != null) {
+            intent.putExtra(LocalPlaybackService.EXTRA_URI, track.uri.toString())
+            intent.putExtra(LocalPlaybackService.EXTRA_TITLE, track.title)
+            intent.putExtra(LocalPlaybackService.EXTRA_ARTIST, track.artist)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && action == LocalPlaybackService.ACTION_PLAY) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
         }
     }
 
-    private fun pauseTrack() {
-        if (mediaPlayer?.isPlaying == true) mediaPlayer?.pause()
-    }
-
-    private fun resumeTrack() {
-        try { mediaPlayer?.start() } catch (_: Exception) { }
-    }
-
-    override fun onDestroy() {
-        mediaPlayer?.release()
-        mediaPlayer = null
-        super.onDestroy()
-    }
+    private fun playTrack(track: LumaTrack) = sendPlaybackAction(LocalPlaybackService.ACTION_PLAY, track)
+    private fun pauseTrack() = sendPlaybackAction(LocalPlaybackService.ACTION_PAUSE)
+    private fun resumeTrack() = sendPlaybackAction(LocalPlaybackService.ACTION_RESUME)
 }
 
 @Composable
@@ -145,18 +133,32 @@ private fun LumaApp(
     pauseTrack: () -> Unit,
     resumeTrack: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val preferences = remember { context.getSharedPreferences("luma_preferences", android.content.Context.MODE_PRIVATE) }
     var tracks by remember { mutableStateOf(emptyList<LumaTrack>()) }
     var hasPermission by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
     var tab by remember { mutableStateOf("Home") }
     var currentTrack by remember { mutableStateOf<LumaTrack?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
-    var favourites by remember { mutableStateOf(setOf<Long>()) }
-    var spotifyPlaylistUrl by remember { mutableStateOf("") }
-    var savedSpotifyPlaylists by remember { mutableStateOf(emptyList<String>()) }
+    var favourites by remember {
+        mutableStateOf(preferences.getStringSet("favourites", emptySet()).orEmpty().mapNotNull { it.toLongOrNull() }.toSet())
+    }
+    var spotifyPlaylistUrl by remember { mutableStateOf(preferences.getString("last_spotify_playlist", "").orEmpty()) }
+    var savedSpotifyPlaylists by remember {
+        mutableStateOf(preferences.getStringSet("spotify_playlists", emptySet()).orEmpty().toList())
+    }
     var spotifyMessage by remember { mutableStateOf<String?>(null) }
 
-    val context = androidx.compose.ui.platform.LocalContext.current
+    LaunchedEffect(favourites) {
+        preferences.edit().putStringSet("favourites", favourites.map { it.toString() }.toSet()).apply()
+    }
+    LaunchedEffect(savedSpotifyPlaylists) {
+        preferences.edit().putStringSet("spotify_playlists", savedSpotifyPlaylists.toSet()).apply()
+    }
+    LaunchedEffect(spotifyPlaylistUrl) {
+        preferences.edit().putString("last_spotify_playlist", spotifyPlaylistUrl).apply()
+    }
     val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         hasPermission = granted
