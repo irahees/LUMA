@@ -23,13 +23,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Validate Spotify OAuth configuration
+      - name: Report Spotify OAuth configuration
         env:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
         run: |
           if [ -z "$SPOTIFY_CLIENT_ID" ]; then
-            echo "::error::Missing repository Actions secret SPOTIFY_CLIENT_ID. Configure the LUMA Spotify app Client ID and matching redirect URI before building a login-enabled APK."
-            exit 1
+            echo "::warning::SPOTIFY_CLIENT_ID is not configured. The APK can build, but Spotify library authorization will not work until the LUMA app owner configures the Client ID and redirect URI."
+          else
+            echo "Spotify Client ID is configured."
           fi
       - name: Build debug APK
         env:
