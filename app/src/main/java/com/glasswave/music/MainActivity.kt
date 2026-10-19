@@ -642,7 +642,7 @@ private fun SpotifyAccountPanel(
                 Text("✧", modifier = Modifier.align(Alignment.TopEnd).padding(16.dp), color = Color.White.copy(alpha = 0.72f), fontSize = 24.sp)
             }
             Text(
-                "Continue on Spotify's official sign-in page. Your password stays with Spotify.",
+                "1. Tap Continue with Spotify.  2. Sign in or create your Spotify account on Spotify's official page.  3. Review the request and approve LUMA. You'll return here to see your playlists and Liked Songs.",
                 fontSize = 12.sp, color = LumaMuted, lineHeight = 17.sp
             )
             Button(
@@ -656,8 +656,8 @@ private fun SpotifyAccountPanel(
             }
             if (!oauthConfigured) {
                 Text(
-                    "This opens Spotify login, but syncing playlists requires the LUMA app owner to configure official OAuth once. You won't need to enter a Client ID.",
-                    fontSize = 10.sp, color = LumaMuted, lineHeight = 15.sp
+                    "Spotify connection is not available in this build yet. Please try again after the app is configured.",
+                    fontSize = 10.sp, color = Color(0xFFB54747), lineHeight = 15.sp
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
