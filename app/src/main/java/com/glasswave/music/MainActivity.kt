@@ -39,6 +39,7 @@ import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import kotlinx.coroutines.launch
 
 private val LumaBg = Color(0xFFF4F5F8)
 private val LumaInk = Color(0xFF20212A)
@@ -211,11 +212,16 @@ private fun LumaApp(
     var favourites by remember {
         mutableStateOf(preferences.getStringSet("favourites", emptySet()).orEmpty().mapNotNull { it.toLongOrNull() }.toSet())
     }
-    var spotifyPlaylistUrl by remember { mutableStateOf(preferences.getString("last_spotify_playlist", "").orEmpty()) }
-    var savedSpotifyPlaylists by remember {
-        mutableStateOf(preferences.getStringSet("spotify_playlists", emptySet()).orEmpty().toList())
-    }
+    var spotifyClientId by remember { mutableStateOf(preferences.getString("spotify_client_id", "").orEmpty()) }
+    var spotifySession by remember { mutableStateOf<SpotifySession?>(null) }
+    var spotifyLoading by remember { mutableStateOf(false) }
     var spotifyMessage by remember { mutableStateOf<String?>(null) }
+    var spotifyPlaylists by remember { mutableStateOf(emptyList<SpotifyPlaylist>()) }
+    var spotifyLikedSongs by remember { mutableStateOf(emptyList<SpotifyTrack>()) }
+    var spotifySelectedPlaylist by remember { mutableStateOf<SpotifyPlaylist?>(null) }
+    var spotifyTracks by remember { mutableStateOf(emptyList<SpotifyTrack>()) }
+    var spotifyLibraryTab by remember { mutableStateOf("Playlists") }
+    val coroutineScope = rememberCoroutineScope()
     var freeMusicSearch by remember { mutableStateOf("") }
     var freeMusicTracks by remember { mutableStateOf(emptyList<LumaTrack>()) }
     var freeMusicLoading by remember { mutableStateOf(false) }
@@ -225,11 +231,8 @@ private fun LumaApp(
     LaunchedEffect(favourites) {
         preferences.edit().putStringSet("favourites", favourites.map { it.toString() }.toSet()).apply()
     }
-    LaunchedEffect(savedSpotifyPlaylists) {
-        preferences.edit().putStringSet("spotify_playlists", savedSpotifyPlaylists.toSet()).apply()
-    }
-    LaunchedEffect(spotifyPlaylistUrl) {
-        preferences.edit().putString("last_spotify_playlist", spotifyPlaylistUrl).apply()
+    LaunchedEffect(spotifyClientId) {
+        preferences.edit().putString("spotify_client_id", spotifyClientId).apply()
     }
     val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -322,33 +325,89 @@ private fun LumaApp(
                     }
                 }
             } else if (tab == "Spotify") {
-                SpotifyPlaylistPanel(
-                    playlistUrl = spotifyPlaylistUrl,
-                    onUrlChange = { spotifyPlaylistUrl = it; spotifyMessage = null },
-                    savedPlaylists = savedSpotifyPlaylists,
+                SpotifyAccountPanel(
+                    clientId = spotifyClientId,
+                    onClientIdChange = { spotifyClientId = it; spotifyMessage = null },
+                    connected = spotifySession != null,
+                    loading = spotifyLoading,
                     message = spotifyMessage,
-                    onSave = {
-                        val raw = spotifyPlaylistUrl.trim()
-                        val normalized = if (raw.startsWith("spotify:playlist:")) {
-                            "https://open.spotify.com/playlist/" + raw.removePrefix("spotify:playlist:")
-                        } else raw
-                        val uri = runCatching { Uri.parse(normalized) }.getOrNull()
-                        if (uri != null && uri.scheme == "https" && uri.host == "open.spotify.com" && uri.path.orEmpty().startsWith("/playlist/")) {
-                            if (normalized !in savedSpotifyPlaylists) savedSpotifyPlaylists = savedSpotifyPlaylists + normalized
-                            spotifyPlaylistUrl = normalized
-                            spotifyMessage = "Playlist link saved in this session."
-                        } else {
-                            spotifyMessage = "Paste a valid https://open.spotify.com/playlist/... link."
+                    playlists = spotifyPlaylists,
+                    likedSongs = spotifyLikedSongs,
+                    selectedPlaylist = spotifySelectedPlaylist,
+                    selectedTracks = spotifyTracks,
+                    libraryTab = spotifyLibraryTab,
+                    onLibraryTabChange = { spotifyLibraryTab = it; spotifySelectedPlaylist = null; spotifyTracks = emptyList() },
+                    onConnect = {
+                        if (spotifyLoading) return@SpotifyAccountPanel
+                        spotifyLoading = true
+                        spotifyMessage = "Opening secure Spotify sign-in…"
+                        coroutineScope.launch {
+                            try {
+                                val session = SpotifyApi.authorize(spotifyClientId) { authUrl ->
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(authUrl)))
+                                }
+                                spotifySession = session
+                                spotifyPlaylists = SpotifyApi.fetchPlaylists(session)
+                                spotifySession = SpotifyApi.refreshIfNeeded(session)
+                                spotifyLikedSongs = SpotifyApi.fetchLikedSongs(spotifySession!!)
+                                spotifyLibraryTab = "Playlists"
+                                spotifySelectedPlaylist = null
+                                spotifyTracks = emptyList()
+                                spotifyMessage = "Connected. Choose a playlist or open Liked Songs."
+                            } catch (error: Exception) {
+                                spotifyMessage = error.message ?: "Spotify sign-in failed. Check the Client ID and redirect URI."
+                            } finally {
+                                spotifyLoading = false
+                            }
                         }
                     },
-                    onOpen = { url ->
+                    onSelectPlaylist = { playlist ->
+                        val session = spotifySession
+                        if (session != null) {
+                            spotifyLoading = true
+                            spotifyMessage = "Loading playlist…"
+                            coroutineScope.launch {
+                                try {
+                                    val fresh = SpotifyApi.refreshIfNeeded(session)
+                                    spotifySession = fresh
+                                    spotifyTracks = SpotifyApi.fetchPlaylistTracks(fresh, playlist.id)
+                                    spotifySelectedPlaylist = playlist
+                                    spotifyLibraryTab = "Tracks"
+                                    spotifyMessage = if (spotifyTracks.isEmpty()) "No tracks were returned for this playlist." else null
+                                } catch (error: Exception) {
+                                    spotifyMessage = error.message ?: "Couldn't load this Spotify playlist."
+                                } finally {
+                                    spotifyLoading = false
+                                }
+                            }
+                        }
+                    },
+                    onShowLikedSongs = {
+                        val session = spotifySession
+                        if (session != null) {
+                            spotifyLoading = true
+                            spotifyMessage = "Loading Liked Songs…"
+                            coroutineScope.launch {
+                                try {
+                                    val fresh = SpotifyApi.refreshIfNeeded(session)
+                                    spotifySession = fresh
+                                    spotifyLikedSongs = SpotifyApi.fetchLikedSongs(fresh)
+                                    spotifySelectedPlaylist = null
+                                    spotifyLibraryTab = "Liked Songs"
+                                    spotifyMessage = if (spotifyLikedSongs.isEmpty()) "No saved tracks were returned." else null
+                                } catch (error: Exception) {
+                                    spotifyMessage = error.message ?: "Couldn't load Liked Songs."
+                                } finally {
+                                    spotifyLoading = false
+                                }
+                            }
+                        }
+                    },
+                    onOpenSpotify = { url ->
                         try {
-                            val uri = Uri.parse(url)
-                            if (uri.scheme == "https" && uri.host == "open.spotify.com" && uri.path.orEmpty().startsWith("/playlist/")) {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                            } else spotifyMessage = "This doesn't look like a Spotify playlist link."
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                         } catch (_: Exception) {
-                            spotifyMessage = "Couldn't open the playlist. Check the link and try again."
+                            spotifyMessage = "No app could open that Spotify link."
                         }
                     }
                 )
@@ -517,63 +576,151 @@ private fun FreeMusicPanel(
 }
 
 @Composable
-private fun SpotifyPlaylistPanel(
-    playlistUrl: String,
-    onUrlChange: (String) -> Unit,
-    savedPlaylists: List<String>,
+private fun SpotifyAccountPanel(
+    clientId: String,
+    onClientIdChange: (String) -> Unit,
+    connected: Boolean,
+    loading: Boolean,
     message: String?,
-    onSave: () -> Unit,
-    onOpen: (String) -> Unit
+    playlists: List<SpotifyPlaylist>,
+    likedSongs: List<SpotifyTrack>,
+    selectedPlaylist: SpotifyPlaylist?,
+    selectedTracks: List<SpotifyTrack>,
+    libraryTab: String,
+    onLibraryTabChange: (String) -> Unit,
+    onConnect: () -> Unit,
+    onSelectPlaylist: (SpotifyPlaylist) -> Unit,
+    onShowLikedSongs: () -> Unit,
+    onOpenSpotify: (String) -> Unit
 ) {
     Column(
-        Modifier.fillMaxWidth().background(
+        Modifier.fillMaxWidth().fillMaxHeight(0.74f).background(
             Brush.verticalGradient(listOf(Color(0xF9FFFFFF), Color(0xDDE7E8FF))),
             RoundedCornerShape(28.dp)
-        ).padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        ).padding(15.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
-        Text("Bring your playlists", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
-        Text(
-            "Paste a Spotify playlist link. LUMA can save the link here and open it in Spotify. Playback and Spotify ads are handled by Spotify.",
-            fontSize = 12.sp, color = LumaMuted, lineHeight = 18.sp
-        )
-        OutlinedTextField(
-            value = playlistUrl,
-            onValueChange = onUrlChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("https://open.spotify.com/playlist/…") },
-            singleLine = true,
-            shape = RoundedCornerShape(18.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedContainerColor = Color.White.copy(alpha = 0.72f),
-                focusedContainerColor = Color.White.copy(alpha = 0.9f),
-                unfocusedBorderColor = Color.White,
-                focusedBorderColor = LumaAccent
-            )
-        )
-        Button(onClick = onSave, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-            Text("Save playlist link")
-        }
-        if (message != null) {
-            Text(message, fontSize = 12.sp, color = if (message.startsWith("Playlist link saved")) LumaAccent else Color(0xFFB54747))
-        }
-        if (savedPlaylists.isNotEmpty()) {
-            Text("Saved playlists", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
-            savedPlaylists.forEachIndexed { index, url ->
-                Row(
-                    Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.8f), RoundedCornerShape(16.dp)).padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Spotify playlist ${index + 1}", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = LumaInk)
-                        Text(url, fontSize = 10.sp, color = LumaMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    Text("OPEN ↗", fontSize = 10.sp, color = LumaAccent, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onOpen(url) }.padding(8.dp))
-                }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Spotify library", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
+                Text(if (connected) "Connected · playlist metadata" else "Connect your Spotify account", fontSize = 11.sp, color = LumaMuted)
+            }
+            if (connected) {
+                Text("CONNECTED", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = LumaAccent)
             }
         }
-        Spacer(Modifier.height(4.dp))
-        Text("LUMA itself has no in-app ads. It cannot remove ads from Spotify Free or unlock Spotify Premium.", fontSize = 11.sp, color = LumaMuted, lineHeight = 16.sp)
+        if (!connected) {
+            Text(
+                "Use your own Spotify Developer Client ID. LUMA requests read-only access to playlists and Liked Songs. Tracks open in Spotify for playback.",
+                fontSize = 11.sp, color = LumaMuted, lineHeight = 16.sp
+            )
+            OutlinedTextField(
+                value = clientId,
+                onValueChange = onClientIdChange,
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("Spotify Client ID") },
+                placeholder = { Text("Paste Client ID") },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp)
+            )
+            Text("Add this Redirect URI in your Spotify app settings:", fontSize = 10.sp, color = LumaMuted)
+            Text(SpotifyApi.REDIRECT_URI, fontSize = 10.sp, color = LumaAccent, maxLines = 2)
+            Button(onClick = onConnect, enabled = !loading && clientId.isNotBlank(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp)) {
+                Text(if (loading) "Connecting…" else "Connect Spotify")
+            }
+            Text("Spotify Developer Mode currently requires a Premium account for the developer account.", fontSize = 10.sp, color = LumaMuted, lineHeight = 15.sp)
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("Playlists", "Liked Songs").forEach { option ->
+                    val active = (option == "Playlists" && libraryTab == "Playlists") ||
+                        (option == "Liked Songs" && libraryTab == "Liked Songs")
+                    Surface(
+                        onClick = {
+                            if (option == "Liked Songs") onShowLikedSongs()
+                            else onLibraryTabChange("Playlists")
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (active) LumaAccent.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(option, modifier = Modifier.padding(vertical = 10.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            color = if (active) LumaAccent else LumaMuted, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            if (selectedPlaylist != null && libraryTab == "Tracks") {
+                Text(
+                    "‹  ${selectedPlaylist.name}",
+                    modifier = Modifier.clickable { onLibraryTabChange("Playlists") }.padding(vertical = 3.dp),
+                    color = LumaAccent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+                )
+            }
+            if (loading) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("Loading Spotify library…", color = LumaMuted, fontSize = 11.sp)
+                }
+            }
+            when (libraryTab) {
+                "Playlists" -> {
+                    if (playlists.isEmpty() && !loading) Text("No playlists returned. Check Spotify API access.", color = LumaMuted, fontSize = 12.sp)
+                    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp), contentPadding = PaddingValues(bottom = 6.dp)) {
+                        items(playlists, key = { it.id }) { playlist ->
+                            Row(
+                                Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.83f), RoundedCornerShape(17.dp))
+                                    .clickable { onSelectPlaylist(playlist) }.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.size(43.dp).background(LumaLilac, RoundedCornerShape(13.dp)), contentAlignment = Alignment.Center) {
+                                    Text("♫", color = LumaAccent, fontSize = 22.sp)
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(playlist.name, color = LumaInk, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${playlist.trackCount} tracks", color = LumaMuted, fontSize = 10.sp)
+                                }
+                                Text("OPEN", fontSize = 10.sp, color = LumaAccent, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.clickable { onOpenSpotify(playlist.spotifyUrl) }.padding(6.dp))
+                            }
+                        }
+                    }
+                }
+                "Liked Songs" -> SpotifyTrackList(likedSongs, loading, onOpenSpotify)
+                "Tracks" -> SpotifyTrackList(selectedTracks, loading, onOpenSpotify)
+            }
+        }
+        if (message != null) Text(message, fontSize = 10.sp, color = if (message.contains("failed", true) || message.contains("couldn't", true) || message.contains("error", true)) Color(0xFFB54747) else LumaMuted, lineHeight = 14.sp)
+        Text("LUMA does not play or download Spotify audio and cannot remove ads from Spotify Free.", fontSize = 10.sp, color = LumaMuted, lineHeight = 14.sp)
+    }
+}
+
+@Composable
+private fun SpotifyTrackList(
+    tracks: List<SpotifyTrack>,
+    loading: Boolean,
+    onOpenSpotify: (String) -> Unit
+) {
+    if (tracks.isEmpty() && !loading) {
+        Text("No tracks returned.", color = LumaMuted, fontSize = 12.sp)
+    }
+    LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 6.dp)) {
+        items(tracks, key = { it.id }) { track ->
+            Row(
+                Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.83f), RoundedCornerShape(15.dp))
+                    .clickable { onOpenSpotify(track.spotifyUrl) }.padding(11.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.size(38.dp).background(LumaLilac, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                    Text("♫", color = LumaAccent, fontSize = 20.sp)
+                }
+                Spacer(Modifier.width(9.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(track.name, color = LumaInk, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(track.artists, color = LumaMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Text("↗", color = LumaAccent, fontSize = 17.sp)
+            }
+        }
     }
 }
 
