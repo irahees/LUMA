@@ -340,12 +340,7 @@ private fun LumaApp(
                     onConnect = {
                         if (spotifyLoading) return@SpotifyAccountPanel
                         if (spotifyClientId.isBlank()) {
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://accounts.spotify.com/login")))
-                                spotifyMessage = "Spotify login opened. Library sync becomes available when the LUMA app owner configures the official OAuth Client ID once."
-                            } catch (_: Exception) {
-                                spotifyMessage = "Could not open Spotify login. Check that a browser is installed."
-                            }
+                            spotifyMessage = "Spotify sign-in is not configured for this LUMA build yet. The app owner must configure the official Spotify Client ID. Opening Spotify's login page alone will not connect your playlists or Liked Songs."
                             return@SpotifyAccountPanel
                         }
                         spotifyLoading = true
