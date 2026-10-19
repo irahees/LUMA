@@ -33,6 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import java.util.Locale
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 private val LumaBg = Color(0xFFF4F5F8)
 private val LumaInk = Color(0xFF20212A)
@@ -49,6 +55,67 @@ data class LumaTrack(
     val duration: Long,
     val uri: Uri
 )
+
+private suspend fun searchFreeMusic(searchText: String): List<LumaTrack> = withContext(Dispatchers.IO) {
+    val safeSearch = searchText.trim().take(80)
+    val licenseFilter = "(licenseurl:http*creativecommons.org/licenses/by/* OR licenseurl:http*creativecommons.org/licenses/by-sa/*)"
+    val query = if (safeSearch.isBlank()) "mediatype:audio AND $licenseFilter"
+                else "mediatype:audio AND $licenseFilter AND $safeSearch"
+    val encodedQuery = URLEncoder.encode(query, "UTF-8")
+    val searchUrl = "https://archive.org/advancedsearch.php?q=$encodedQuery&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=creator&fl%5B%5D=licenseurl&rows=12&page=1&output=json&sort%5B%5D=downloads%20desc"
+    val searchJson = URL(searchUrl).openConnection().run {
+        connectTimeout = 10000
+        readTimeout = 12000
+        getInputStream().bufferedReader().use { it.readText() }
+    }
+    val docs = JSONObject(searchJson).optJSONObject("response")?.optJSONArray("docs") ?: return@withContext emptyList()
+    val tracks = mutableListOf<LumaTrack>()
+    for (index in 0 until docs.length()) {
+        val doc = docs.optJSONObject(index) ?: continue
+        val identifier = doc.optString("identifier").takeIf { it.isNotBlank() } ?: continue
+        try {
+            val metadataText = URL("https://archive.org/metadata/${Uri.encode(identifier)}").openConnection().run {
+                connectTimeout = 8000
+                readTimeout = 10000
+                getInputStream().bufferedReader().use { it.readText() }
+            }
+            val item = JSONObject(metadataText)
+            val metadata = item.optJSONObject("metadata") ?: continue
+            val license = metadata.optString("licenseurl", doc.optString("licenseurl"))
+            val approvedLicense = license.contains("creativecommons.org/licenses/by/") ||
+                license.contains("creativecommons.org/licenses/by-sa/")
+            if (!approvedLicense) continue
+            val files = item.optJSONArray("files") ?: continue
+            var audioName: String? = null
+            for (fileIndex in 0 until files.length()) {
+                val file = files.optJSONObject(fileIndex) ?: continue
+                val name = file.optString("name")
+                val isPrivate = file.optString("private") == "true"
+                val playable = name.endsWith(".mp3", true) || name.endsWith(".ogg", true) ||
+                    name.endsWith(".m4a", true) || name.endsWith(".flac", true)
+                if (!isPrivate && playable && !name.contains("/")) {
+                    audioName = name
+                    break
+                }
+            }
+            val fileName = audioName ?: continue
+            val title = doc.optString("title", metadata.optString("title", "Free audio")).ifBlank { "Free audio" }
+            val creator = doc.optString("creator", metadata.optString("creator", "Internet Archive")).ifBlank { "Internet Archive" }
+            val streamUrl = "https://archive.org/download/${Uri.encode(identifier)}/${Uri.encode(fileName)}"
+            tracks += LumaTrack(
+                id = identifier.hashCode().toLong(),
+                title = title,
+                artist = creator,
+                album = "Creative Commons · Internet Archive",
+                duration = 0L,
+                uri = Uri.parse(streamUrl)
+            )
+        } catch (_: Exception) {
+            // Skip unavailable or malformed items and keep searching the remaining results.
+        }
+    }
+    tracks
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -149,6 +216,10 @@ private fun LumaApp(
         mutableStateOf(preferences.getStringSet("spotify_playlists", emptySet()).orEmpty().toList())
     }
     var spotifyMessage by remember { mutableStateOf<String?>(null) }
+    var freeMusicSearch by remember { mutableStateOf("") }
+    var freeMusicTracks by remember { mutableStateOf(emptyList<LumaTrack>()) }
+    var freeMusicLoading by remember { mutableStateOf(false) }
+    var freeMusicMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(favourites) {
         preferences.edit().putStringSet("favourites", favourites.map { it.toString() }.toSet()).apply()
@@ -198,7 +269,7 @@ private fun LumaApp(
                 }
                 Spacer(Modifier.height(8.dp))
             } else {
-                Text(when (tab) { "Search" -> "Find your sound"; "Favourites" -> "Your favourites"; "Now Playing" -> "Now playing"; "Spotify" -> "Spotify playlists"; else -> "Your library" }, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
+                Text(when (tab) { "Search" -> "Find your sound"; "Favourites" -> "Your favourites"; "Now Playing" -> "Now playing"; "Spotify" -> "Spotify playlists"; "Free Music" -> "Free music"; else -> "Your library" }, fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
                 Spacer(Modifier.height(13.dp))
             }
 
@@ -221,7 +292,35 @@ private fun LumaApp(
                 Spacer(Modifier.height(10.dp))
             }
 
-            if (tab == "Spotify") {
+            if (tab == "Free Music") {
+                FreeMusicPanel(
+                    searchText = freeMusicSearch,
+                    onSearchTextChange = { freeMusicSearch = it },
+                    tracks = freeMusicTracks,
+                    loading = freeMusicLoading,
+                    message = freeMusicMessage,
+                    onSearch = {
+                        freeMusicLoading = true
+                        freeMusicMessage = null
+                        // Search runs off the UI thread and only returns items with CC BY/CC BY-SA metadata.
+                    },
+                    onPlay = { track -> currentTrack = track; playTrack(track); isPlaying = true },
+                    onFavourite = { track -> favourites = if (track.id in favourites) favourites - track.id else favourites + track.id }
+                )
+                LaunchedEffect(freeMusicSearch, tab) {
+                    if (tab == "Free Music" && freeMusicTracks.isEmpty() && !freeMusicLoading) {
+                        freeMusicLoading = true
+                        try {
+                            freeMusicTracks = searchFreeMusic(freeMusicSearch)
+                            freeMusicMessage = if (freeMusicTracks.isEmpty()) "No playable Creative Commons tracks found. Try another search." else null
+                        } catch (_: Exception) {
+                            freeMusicMessage = "Could not load free music. Check your internet connection and try again."
+                        } finally {
+                            freeMusicLoading = false
+                        }
+                    }
+                }
+            } else if (tab == "Spotify") {
                 SpotifyPlaylistPanel(
                     playlistUrl = spotifyPlaylistUrl,
                     onUrlChange = { spotifyPlaylistUrl = it; spotifyMessage = null },
@@ -363,10 +462,53 @@ private fun NowPlayingGlass(track: LumaTrack, playing: Boolean, onPlayPause: () 
 @Composable
 private fun BottomGlassBar(tab: String, onSelect: (String) -> Unit) {
     Row(Modifier.fillMaxWidth().shadow(13.dp, RoundedCornerShape(28.dp), ambientColor = Color(0x16000000)).background(Brush.verticalGradient(listOf(Color(0xFAFFFFFF), Color(0xDFFFFFFF))), RoundedCornerShape(28.dp)).padding(horizontal = 4.dp, vertical = 8.dp), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
-        listOf(Triple("Home", "⌂", "Home"), Triple("Search", "⌕", "Search"), Triple("Library", "♫", "Library"), Triple("Favourites", "♡", "Likes"), Triple("Spotify", "◉", "Spotify")).forEach { (name, icon, label) ->
+        listOf(Triple("Home", "⌂", "Home"), Triple("Search", "⌕", "Search"), Triple("Library", "♫", "Library"), Triple("Favourites", "♡", "Likes"), Triple("Spotify", "◉", "Spotify"), Triple("Free Music", "♪", "Free")).forEach { (name, icon, label) ->
             Column(Modifier.weight(1f).clickable { onSelect(name) }.padding(vertical = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(icon, fontSize = 21.sp, color = if (tab == name) LumaAccent else LumaMuted)
                 Text(label, fontSize = 9.sp, color = if (tab == name) LumaAccent else LumaMuted, fontWeight = if (tab == name) FontWeight.Bold else FontWeight.Normal)
+            }
+        }
+    }
+}
+
+@Composable
+private fun FreeMusicPanel(
+    searchText: String,
+    onSearchTextChange: (String) -> Unit,
+    tracks: List<LumaTrack>,
+    loading: Boolean,
+    message: String?,
+    onSearch: () -> Unit,
+    onPlay: (LumaTrack) -> Unit,
+    onFavourite: (LumaTrack) -> Unit
+) {
+    Column(Modifier.fillMaxWidth().weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            "Free-to-play music with Creative Commons BY / BY-SA metadata from Internet Archive. Tracks are streamed from their public item pages.",
+            fontSize = 11.sp, color = LumaMuted, lineHeight = 16.sp
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = searchText,
+                onValueChange = onSearchTextChange,
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Search free music") },
+                singleLine = true,
+                shape = RoundedCornerShape(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Button(onClick = onSearch, shape = RoundedCornerShape(16.dp)) { Text("Search") }
+        }
+        if (loading) {
+            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text("Finding licensed tracks…", fontSize = 12.sp, color = LumaMuted)
+            }
+        }
+        if (message != null) Text(message, fontSize = 12.sp, color = LumaMuted)
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
+            items(tracks, key = { it.id }) { track ->
+                TrackGlassRow(track, false, onFavourite = { onFavourite(track) }, onClick = { onPlay(track) })
             }
         }
     }
