@@ -1,39 +1,45 @@
 # 👺 LUMA Music
 
-**Your music. One clean glass interface.**
+**A music space with an original Liquid Glass-inspired interface.**
 
-LUMA is an Android music app built with Kotlin, Jetpack Compose, and a Liquid Glass-inspired design. It brings local music, Spotify library browsing, favourites, and separately sourced free-to-listen audio into one interface.
+LUMA is an Android music app built with Kotlin and Jetpack Compose. It brings local music, favourites, Spotify library metadata, and separately sourced free-to-listen audio into one soft, glassy interface.
 
-## Features
+## Features in this build
 
-- **Local music** — browse and play audio files on your device.
-- **Background playback** — keep local tracks playing when you leave the app.
-- **Favourites** — keep your favourite local tracks close.
-- **Spotify library** — connect through Spotify OAuth with PKCE and browse playlists and Liked Songs when Spotify API access permits.
-- **Free music discovery** — find separate Creative Commons BY / BY-SA audio from Internet Archive.
-- **Clean interface** — translucent glass-inspired panels and a focused music-first layout.
-- **No in-app ads or analytics SDKs** in the current project.
+- Local audio library and search.
+- Background playback for local audio.
+- Favourites and a mini-player / now-playing screen.
+- Spotify playlist and Liked Songs metadata through Spotify's official OAuth/API where app access allows.
+- Open Spotify tracks and playlists in Spotify for playback.
+- Creative Commons BY / BY-SA audio discovery from Internet Archive.
+- Translucent glass panels, ambient colour blooms, and rounded floating controls.
+- No in-app advertising or analytics SDK is included in the current project.
 
-## Spotify: important details
+## Spotify sign-in
 
-LUMA uses Spotify for **library metadata and links**. Spotify tracks open in the official Spotify app for playback; LUMA does not download, extract, or stream Spotify audio, and it cannot remove ads or unlock Premium features on Spotify Free.
+LUMA no longer asks each person to paste a Client ID. The app can be built with the maintainer's Spotify OAuth Client ID and the user signs in on Spotify's official authorization page. LUMA never asks for or stores a Spotify password.
 
-To connect Spotify, the app needs a Spotify Developer app **Client ID** configured in the app's current connection screen:
+### One-time setup for the app maintainer
 
-1. Create an app in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
-2. Add this redirect URI exactly: `http://127.0.0.1:43825/callback`
-3. Copy the Client ID, then enter it in LUMA's Spotify screen.
-4. Sign in on Spotify's official authorization page and approve the requested permissions.
+Spotify's official OAuth flow requires an app Client ID. Set the repository's **Actions secret** named `SPOTIFY_CLIENT_ID` to the Client ID belonging to the LUMA app. The Android build workflow injects it at build time; it is not entered by each user. A Client Secret must not be embedded in this Android APK.
 
-LUMA uses PKCE and does not need a Spotify Client Secret embedded in the APK. Never commit passwords, Client Secrets, access tokens, refresh tokens, or personal account data.
+If this secret is not configured, the sign-in button can still open Spotify's login page, but that web login by itself does not authorize LUMA to read playlists or Liked Songs. Configure the Client ID once to enable official OAuth library sync in the build.
 
-Spotify controls API eligibility and access limits. Development Mode may restrict the developer account and authorized users, and requirements can change. A public APK or repository does not automatically grant every downloader Spotify API access. Check Spotify's current dashboard and policies before distributing the app widely.
+In the Spotify Developer Dashboard, register this redirect URI exactly:
+
+`http://127.0.0.1:43825/callback`
+
+Spotify controls API eligibility and usage limits. As of the current Development Mode rules, the app owner must meet Spotify's Premium requirement and Development Mode apps are limited to a small number of authorized users. That makes Development Mode unsuitable for unlimited public distribution. End users should use accounts they are authorized to access, and LUMA does not remove Spotify Free advertisements or Premium restrictions.
+
+### Spotify audio playback
+
+LUMA uses Spotify for account-authorized library metadata and links. It does not extract Spotify session cookies, generate private session tokens, or stream/download Spotify audio. Spotify track playback opens in Spotify. Free audio in LUMA is a separate Creative Commons source.
 
 ## Download the APK
 
-Open [LUMA Android build runs](https://github.com/irahees/LUMA/actions) and choose a successful run. Download the **LUMA-debug-apk** artifact. The artifact contains the APK only; GitHub packages downloadable workflow artifacts as ZIP files. Artifacts expire after 14 days.
+Open [LUMA Android build runs](https://github.com/irahees/LUMA/actions), choose a successful run, and download the **LUMA-debug-apk** artifact. The build job uploads only `app/build/outputs/apk/debug/app-debug.apk`; GitHub delivers workflow artifacts as a ZIP containing that file. Artifacts expire after 14 days.
 
-The workflow builds `app/build/outputs/apk/debug/app-debug.apk` and uploads that file only. This is a **debug/testing APK**, not a production-signed Play Store release. Install only builds you trust.
+This is a debug/testing APK, not a production-signed Play Store release.
 
 ## Build locally
 
@@ -45,18 +51,17 @@ cd LUMA
 gradle --no-daemon assembleDebug
 ```
 
-APK output: `app/build/outputs/apk/debug/app-debug.apk`
+To embed the app Client ID when building locally, set the `SPOTIFY_CLIENT_ID` environment variable or pass `-PspotifyClientId=YOUR_CLIENT_ID` to Gradle. Keep personal credentials, access tokens, refresh tokens, and any Client Secret out of source control.
 
-Technology: Kotlin, Jetpack Compose, Android Gradle Plugin 8.7.3, Kotlin 2.0.21, Java 17, Compose BOM 2024.12.01.
+APK output: `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Privacy and limitations
 
-- Spotify tokens are held in app memory; reconnect after restarting LUMA.
-- Spotify playlist and liked-track entries are metadata and links; audio playback is handled by Spotify.
+- The current app keeps Spotify tokens in memory and may require reconnecting after restart.
+- Spotify library entries are metadata and links; Spotify handles their audio playback.
 - Local playback uses audio files available on the device.
-- The current project does not include an analytics SDK or in-app advertising SDK.
-- Review permissions and source code before installing or contributing.
+- Review permissions and source before installing or contributing.
 
 ## Contributing
 
-Issues and pull requests are welcome. Do not post API secrets, tokens, passwords, or private user data in issues, screenshots, logs, or commits.
+Issues and pull requests are welcome. Do not publish API secrets, passwords, tokens, or private user data in issues, screenshots, logs, or commits.
