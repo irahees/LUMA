@@ -380,7 +380,7 @@ private fun SpotifyPlaylistPanel(
     onOpen: (String) -> Unit
 ) {
     Column(
-        Modifier.fillMaxWidth().weight(1f, fill = false).background(
+        Modifier.fillMaxWidth().background(
             Brush.verticalGradient(listOf(Color(0xF9FFFFFF), Color(0xDDE7E8FF))),
             RoundedCornerShape(28.dp)
         ).padding(18.dp),
