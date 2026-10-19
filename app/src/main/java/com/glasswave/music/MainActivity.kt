@@ -602,8 +602,8 @@ private fun SpotifyAccountPanel(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Spotify library", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
-                Text(if (connected) "Connected · playlist metadata" else "Connect your Spotify account", fontSize = 11.sp, color = LumaMuted)
+                Text("Welcome to LUMA", fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = LumaInk)
+                Text(if (connected) "Connected · playlist metadata" else "Sign in to sync your Spotify library", fontSize = 11.sp, color = LumaMuted)
             }
             if (connected) {
                 Text("CONNECTED", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = LumaAccent)
@@ -611,7 +611,7 @@ private fun SpotifyAccountPanel(
         }
         if (!connected) {
             Text(
-                "Use your own Spotify Developer Client ID. LUMA requests read-only access to playlists and Liked Songs. Tracks open in Spotify for playback.",
+                "Enter your Spotify Developer Client ID for this app. Sign-in opens Spotify securely; your Spotify password is never entered into LUMA. Playlists and Liked Songs sync here, while Spotify tracks open in Spotify for playback.",
                 fontSize = 11.sp, color = LumaMuted, lineHeight = 16.sp
             )
             OutlinedTextField(
@@ -626,9 +626,9 @@ private fun SpotifyAccountPanel(
             Text("Add this Redirect URI in your Spotify app settings:", fontSize = 10.sp, color = LumaMuted)
             Text(SpotifyApi.REDIRECT_URI, fontSize = 10.sp, color = LumaAccent, maxLines = 2)
             Button(onClick = onConnect, enabled = !loading && clientId.isNotBlank(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(17.dp)) {
-                Text(if (loading) "Connecting…" else "Connect Spotify")
+                Text(if (loading) "Connecting…" else "Sign in with Spotify")
             }
-            Text("Spotify Developer Mode currently requires a Premium account for the developer account.", fontSize = 10.sp, color = LumaMuted, lineHeight = 15.sp)
+            Text("Spotify controls API access and may limit which accounts can connect to a development app.", fontSize = 10.sp, color = LumaMuted, lineHeight = 15.sp)
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("Playlists", "Liked Songs").forEach { option ->
